@@ -46,13 +46,13 @@ set "CONFIRM="
 set /p "CONFIRM=Projektdateien hochladen? (J/N): "
 if /I not "%CONFIRM%"=="J" goto :cancel
 
-rem Zuerst Git initialisieren
+rem Git initialisieren, falls noetig
 if not exist ".git" (
     git init
     if errorlevel 1 goto :error
 )
 
-rem Erst nach git init die Identitaet konfigurieren
+rem Git-Identitaet fuer dieses Repository setzen
 git config user.name "%GIT_NAME%"
 if errorlevel 1 goto :error
 
@@ -101,22 +101,61 @@ if errorlevel 1 (
 if errorlevel 1 goto :error
 
 echo.
-echo [5/5] Upload starten...
+echo [5/5] Erster Upload-Versuch...
 git push -u origin main
+if not errorlevel 1 goto :success
+
+echo.
+echo Push fehlgeschlagen. Versuche, Remote-Aenderungen zusammenzufuehren...
+echo.
+
+rem Remote-Branch abrufen
+git fetch origin
+if errorlevel 1 (
+    echo FEHLER: Remote konnte nicht abgerufen werden.
+    echo Pruefe Repository-URL, Internetverbindung und GitHub-Anmeldung.
+    goto :error
+)
+
+rem Pruefen, ob origin/main existiert
+git show-ref --verify --quiet refs/remotes/origin/main
+if errorlevel 1 (
+    echo Auf origin/main wurde kein Branch gefunden.
+    echo Der erste Push ist aus einem anderen Grund fehlgeschlagen.
+    goto :error
+)
+
+rem Remote-Aenderungen zusammenfuehren
+git merge origin/main --allow-unrelated-histories --no-edit
 if errorlevel 1 (
     echo.
-    echo Upload fehlgeschlagen.
-    echo Es wurde kein Force-Push ausgefuehrt.
-    echo Pruefe die Git-Fehlermeldung oben.
+    echo MERGE NICHT MOEGLICH: Es gibt wahrscheinlich Konflikte.
+    echo Loese die Konflikte manuell, danach:
+    echo   git add -A
+    echo   git commit
+    echo   git push -u origin main
+    echo.
+    echo Die Batch-Datei ueberschreibt keine Dateien per Force-Push.
     pause
     exit /b 1
 )
 
 echo.
+echo Zusammenfuehrung erfolgreich. Erneuter Upload...
+git push -u origin main
+if errorlevel 1 (
+    echo.
+    echo Upload nach dem Merge fehlgeschlagen.
+    echo Es wurde kein Force-Push ausgefuehrt.
+    goto :error
+)
+
+:success
+echo.
 echo ============================================
 echo Upload erfolgreich!
 echo ============================================
-echo %REPO_URL%
+echo Repository: %REPO_URL%
 pause
 exit /b 0
 
@@ -129,6 +168,6 @@ exit /b 1
 :error
 echo.
 echo FEHLER: Ein Git-Befehl ist fehlgeschlagen.
-echo Pruefe die Meldung weiter oben.
+echo Lies die Meldungen weiter oben.
 pause
 exit /b 1
